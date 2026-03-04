@@ -15,6 +15,15 @@
       "baseUrl": {
         "type": "string",
         "default": "https://api.honcho.dev"
+      },
+      "peerId": {
+        "type": "string",
+        "description": "Agent peer identity in Honcho (default: 'openclaw')"
+      },
+      "peerAllies": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Other agent peer IDs whose conclusions about owner to include in context"
       }
     }
   },
@@ -23,7 +32,7 @@
       "label": "Honcho API Key",
       "sensitive": true,
       "placeholder": "hc_...",
-      "help": "API key for Honcho (or use ${HONCHO_API_KEY})"
+      "help": "API key for Honcho (or use HONCHO_API_KEY env var)"
     },
     "workspaceId": {
       "label": "Workspace ID",
@@ -34,6 +43,17 @@
       "label": "API Base URL",
       "advanced": true,
       "placeholder": "https://api.honcho.dev"
+    },
+    "peerId": {
+      "label": "Peer Identity",
+      "placeholder": "oscar",
+      "help": "Unique agent identity (oscar, charlie, etc.)"
+    },
+    "peerAllies": {
+      "label": "Peer Allies",
+      "advanced": true,
+      "placeholder": "[\"charlie\"]",
+      "help": "List of other agent peer IDs to share context with"
     }
   }
 }

@@ -6,6 +6,8 @@ export type HonchoConfig = {
   apiKey?: string;
   workspaceId: string;
   baseUrl: string;
+  peerId: string;
+  peerAllies: string[];
 };
 
 /**
@@ -34,6 +36,12 @@ export const honchoConfigSchema = {
       apiKey = process.env.HONCHO_API_KEY;
     }
 
+    // Parse peerAllies (array of strings)
+    let peerAllies: string[] = [];
+    if (Array.isArray(cfg.peerAllies)) {
+      peerAllies = cfg.peerAllies.filter((p): p is string => typeof p === "string");
+    }
+
     return {
       apiKey,
       workspaceId:
@@ -44,6 +52,11 @@ export const honchoConfigSchema = {
         typeof cfg.baseUrl === "string" && cfg.baseUrl.length > 0
           ? cfg.baseUrl
           : process.env.HONCHO_BASE_URL ?? "https://api.honcho.dev",
+      peerId:
+        typeof cfg.peerId === "string" && cfg.peerId.length > 0
+          ? cfg.peerId
+          : process.env.HONCHO_PEER_ID ?? "openclaw",
+      peerAllies,
     };
   },
 };
