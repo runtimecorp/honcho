@@ -16,6 +16,7 @@ import { honchoConfigSchema, type HonchoConfig } from "./config.js";
 // ============================================================================
 
 const OWNER_ID = "owner";
+const OPENCLAW_ID = "openclaw";
 
 // ============================================================================
 // Plugin Definition
@@ -43,11 +44,8 @@ const honchoPlugin = {
       workspaceId: cfg.workspaceId,
     });
 
-    const primaryPeerId = cfg.peerId;
-    const peerAllies = (cfg.peerAllies ?? []).filter((id) => id !== primaryPeerId);
-
     let ownerPeer: Peer | null = null;
-    let primaryPeer: Peer | null = null;
+    let openclawPeer: Peer | null = null;
     let initialized = false;
 
     /**
@@ -71,7 +69,7 @@ const honchoPlugin = {
 
       // Create peers with metadata to ensure they exist
       ownerPeer = await honcho.peer(OWNER_ID, { metadata: {} });
-      primaryPeer = await honcho.peer(primaryPeerId, { metadata: {} });
+      openclawPeer = await honcho.peer(OPENCLAW_ID, { metadata: {} });
       initialized = true;
     }
 
@@ -150,10 +148,7 @@ const honchoPlugin = {
     async function syncMemoryFiles(): Promise<void> {
       try {
         await ensureInitialized();
-        const runtimeConfig = api.runtime?.config as
-          | { agents?: { defaults?: { workspace?: string } } }
-          | undefined;
-        const workspace = runtimeConfig?.agents?.defaults?.workspace
+        const workspace = api.runtime?.config?.agents?.defaults?.workspace
           ?? `${process.env.HOME}/.openclaw/workspace`;
 
         const fs = await import("fs");
@@ -217,13 +212,13 @@ const honchoPlugin = {
 
         // Push to Honcho — delete stale file-synced conclusions first to avoid duplicates
         if (ownerConclusions.length > 0) {
-          await deleteStaleSyncConclusions(primaryPeer!.conclusionsOf(ownerPeer!), ownerConclusions);
-          await primaryPeer!.conclusionsOf(ownerPeer!).create(ownerConclusions);
+          await deleteStaleSyncConclusions(openclawPeer!.conclusionsOf(ownerPeer!), ownerConclusions);
+          await openclawPeer!.conclusionsOf(ownerPeer!).create(ownerConclusions);
           api.logger.info(`[honcho-sync] Synced ${ownerConclusions.length} owner conclusions (deduped)`);
         }
         if (selfConclusions.length > 0) {
-          await deleteStaleSyncConclusions(primaryPeer!.conclusions, selfConclusions);
-          await primaryPeer!.conclusions.create(selfConclusions);
+          await deleteStaleSyncConclusions(openclawPeer!.conclusions, selfConclusions);
+          await openclawPeer!.conclusions.create(selfConclusions);
           api.logger.info(`[honcho-sync] Synced ${selfConclusions.length} self conclusions (deduped)`);
         }
       } catch (error) {
@@ -263,7 +258,7 @@ const honchoPlugin = {
             summary: true,
             tokens: 5000,
             peerTarget: ownerPeer!,
-            peerPerspective: primaryPeer!,
+            peerPerspective: openclawPeer!,
             // Use the user's prompt as a semantic search query to surface
             // relevant conclusions rather than just frequent/recent ones
             searchQuery: event.prompt.slice(0, 500),
@@ -295,33 +290,6 @@ const honchoPlugin = {
         // Add conversation summary if available
         if (context.summary?.content) {
           sections.push(`Earlier in this conversation:\n${context.summary.content}`);
-        }
-
-        if (peerAllies.length > 0) {
-          const allySections: string[] = [];
-          const searchQuery = event.prompt.slice(0, 500);
-          for (const allyId of peerAllies) {
-            try {
-              const allyPeer = await honcho.peer(allyId, { metadata: {} });
-              const conclusions = await allyPeer.conclusionsOf(ownerPeer!).query(searchQuery, 5, 0.5);
-              const conclusionLines = conclusions
-                .map((conclusion) => conclusion.content.trim())
-                .filter((content) => content.length > 0)
-                .map((content) => `• ${content}`);
-
-              if (conclusionLines.length > 0) {
-                allySections.push(
-                  `Allied agent (${allyId}):\n${conclusionLines.join("\n")}`
-                );
-              }
-            } catch (error) {
-              api.logger.debug?.(`[honcho] Failed to load ally conclusions for ${allyId}: ${error}`);
-            }
-          }
-
-          if (allySections.length > 0) {
-            sections.push(allySections.join("\n\n"));
-          }
         }
 
         if (sections.length === 0) return;
@@ -365,7 +333,7 @@ const honchoPlugin = {
         // Add peers (session now guaranteed to exist)
         await session.addPeers([
           [OWNER_ID, { observeMe: true, observeOthers: false }],
-          [primaryPeerId, { observeMe: true, observeOthers: true }],
+          [OPENCLAW_ID, { observeMe: true, observeOthers: true }],
         ]);
 
         // Skip if nothing new
@@ -376,7 +344,7 @@ const honchoPlugin = {
 
         // Extract only NEW messages (slice from lastSavedIndex)
         const newRawMessages = event.messages.slice(lastSavedIndex);
-        const messages = extractMessages(newRawMessages, ownerPeer!, primaryPeer!);
+        const messages = extractMessages(newRawMessages, ownerPeer!, openclawPeer!);
 
         if (messages.length === 0) {
           // Update index even if no saveable content (e.g., tool-only messages)
@@ -497,7 +465,7 @@ Parameters:
               summary: includeSummary,
               tokens: messageLimit,
               peerTarget: ownerPeer!,
-              peerPerspective: primaryPeer!,
+              peerPerspective: openclawPeer!,
               searchQuery: searchQuery,
             });
 
@@ -527,7 +495,7 @@ Parameters:
             // Add messages if requested
             if (includeMessages && context.messages.length > 0) {
               const messageLines = context.messages.map((msg) => {
-                const speaker = msg.peerId === ownerPeer!.id ? "User" : primaryPeerId;
+                const speaker = msg.peerId === ownerPeer!.id ? "User" : "OpenClaw";
                 const timestamp = msg.createdAt
                   ? new Date(msg.createdAt).toLocaleString()
                   : "";
@@ -877,7 +845,7 @@ Parameters:
         async execute(_toolCallId, params) {
           const { query } = params as { query: string };
           await ensureInitialized();
-          const answer = await primaryPeer!.chat(query, {
+          const answer = await openclawPeer!.chat(query, {
             target: ownerPeer!,
             reasoningLevel: "minimal",
           });
@@ -938,7 +906,7 @@ Use honcho_analyze if you need Honcho to synthesize a complex answer.`,
         async execute(_toolCallId, params) {
           const { query } = params as { query: string };
           await ensureInitialized();
-          const answer = await primaryPeer!.chat(query, {
+          const answer = await openclawPeer!.chat(query, {
             target: ownerPeer!,
             reasoningLevel: "medium",
           });
@@ -967,7 +935,7 @@ Use honcho_analyze if you need Honcho to synthesize a complex answer.`,
             try {
               await ensureInitialized();
               const ownerRep = await ownerPeer!.representation();
-              const openclawRep = await primaryPeer!.representation();
+              const openclawRep = await openclawPeer!.representation();
 
               console.log("Connected to Honcho");
               console.log(`  Workspace: ${cfg.workspaceId}`);
@@ -982,7 +950,7 @@ Use honcho_analyze if you need Honcho to synthesize a complex answer.`,
           .action(async (question: string) => {
             try {
               await ensureInitialized();
-              const answer = await primaryPeer!.chat(question, { target: ownerPeer! });
+              const answer = await openclawPeer!.chat(question, { target: ownerPeer! });
               console.log(answer ?? "No information available.");
             } catch (error) {
               console.error(`Failed to query: ${error}`);
@@ -1017,7 +985,7 @@ Use honcho_analyze if you need Honcho to synthesize a complex answer.`,
       { commands: ["honcho"] }
     );
 
-    api.logger.info(`Honcho memory plugin loaded (peer: ${primaryPeerId})`);
+    api.logger.info("Honcho memory plugin loaded");
   },
 };
 
@@ -1047,7 +1015,7 @@ function cleanMessageContent(content: string): string {
 function extractMessages(
   rawMessages: unknown[],
   ownerPeer: Peer,
-  primaryPeer: Peer
+  openclawPeer: Peer
 ): MessageInput[] {
   const result: MessageInput[] = [];
 
@@ -1081,7 +1049,7 @@ function extractMessages(
     content = content.trim();
 
     if (content) {
-      const peer = role === "user" ? ownerPeer : primaryPeer;
+      const peer = role === "user" ? ownerPeer : openclawPeer;
       result.push(peer.message(content));
     }
   }
