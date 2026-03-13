@@ -150,8 +150,7 @@ const honchoPlugin = {
     async function syncMemoryFiles(): Promise<void> {
       try {
         await ensureInitialized();
-        const workspace = api.runtime?.config?.agents?.defaults?.workspace
-          ?? `${process.env.HOME}/.openclaw/workspace`;
+        const workspace = `${process.env.HOME}/.openclaw/workspace`;
 
         const fs = await import("fs");
         const path = await import("path");
@@ -261,8 +260,6 @@ const honchoPlugin = {
             tokens: 5000,
             peerTarget: ownerPeer!,
             peerPerspective: selfPeer!,
-            // Include ally peers' conclusions if configured
-            peers: cfg.peerAllies.length > 0 ? cfg.peerAllies : undefined,
             // Use the user's prompt as a semantic search query to surface
             // relevant conclusions rather than just frequent/recent ones
             searchQuery: event.prompt.slice(0, 500),
@@ -470,8 +467,6 @@ Parameters:
               tokens: messageLimit,
               peerTarget: ownerPeer!,
               peerPerspective: selfPeer!,
-              // Include ally peers' conclusions if configured
-              peers: cfg.peerAllies.length > 0 ? cfg.peerAllies : undefined,
               searchQuery: searchQuery,
             });
 
